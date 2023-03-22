@@ -3,7 +3,7 @@
 // Note that this is v2.0 of lumberjack, and should be imported using gopkg.in
 // thusly:
 //
-//   import "gopkg.in/natefinch/lumberjack.v2"
+//	import "gopkg.in/natefinch/lumberjack.v2"
 //
 // The package name remains simply lumberjack, and the code resides at
 // https://github.com/natefinch/lumberjack under the v2.0 branch.
@@ -66,7 +66,7 @@ var _ io.WriteCloser = (*Logger)(nil)
 // `/var/log/foo/server.log`, a backup created at 6:30pm on Nov 11 2016 would
 // use the filename `/var/log/foo/server-2016-11-04T18-30-00.000.log`
 //
-// Cleaning Up Old Log Files
+// # Cleaning Up Old Log Files
 //
 // Whenever a new logfile gets created, old log files may be deleted.  The most
 // recent files according to the encoded timestamp will be retained, up to a
@@ -106,6 +106,13 @@ type Logger struct {
 	// Compress determines if the rotated log files should be compressed
 	// using gzip. The default is not to perform compression.
 	Compress bool `json:"compress" yaml:"compress"`
+
+	// Hooks:
+	// AfterCompressFunc calls just after log file is rotated and has been
+	AfterCompressFunc func(filepath string)
+
+	// BeforeDeleteFunc is hook that calls before delete old log files and it can cancel deleting.
+	BeforeDeleteFunc func(filepath string) bool
 
 	size int64
 	file *os.File
@@ -357,6 +364,11 @@ func (l *Logger) millRunOnce() error {
 	}
 
 	for _, f := range remove {
+		if l.BeforeDeleteFunc != nil {
+			if !l.BeforeDeleteFunc(filepath.Join(l.dir(), f.Name())) {
+				continue
+			}
+		}
 		errRemove := os.Remove(filepath.Join(l.dir(), f.Name()))
 		if err == nil && errRemove != nil {
 			err = errRemove
@@ -368,8 +380,10 @@ func (l *Logger) millRunOnce() error {
 		if err == nil && errCompress != nil {
 			err = errCompress
 		}
+		if errCompress == nil && l.AfterCompressFunc != nil {
+			l.AfterCompressFunc(fn + compressSuffix)
+		}
 	}
-
 	return err
 }
 
