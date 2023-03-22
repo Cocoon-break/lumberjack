@@ -114,9 +114,15 @@ type Logger struct {
 	// BeforeDeleteFunc is hook that calls before delete old log files and it can cancel deleting.
 	BeforeDeleteFunc func(filepath string) bool
 
-	size int64
-	file *os.File
-	mu   sync.Mutex
+	// RollingInterval is the number of seconds before rotating to a new log file.
+	// the old log files will be deleted by the MaxAge & MaxBackups properties as usual.
+	// if the rolling interval is 0 the feature is off, default is 0.
+	RollingInterval int64 `json:"rollinginterval" yaml:"rollinginterval"`
+
+	createdAt int64
+	size      int64
+	file      *os.File
+	mu        sync.Mutex
 
 	millCh    chan bool
 	startMill sync.Once
@@ -157,6 +163,12 @@ func (l *Logger) Write(p []byte) (n int, err error) {
 	}
 
 	if l.size+writeLen > l.max() {
+		if err := l.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	if l.exceedsRollingInterval() {
 		if err := l.rotate(); err != nil {
 			return 0, err
 		}
@@ -292,6 +304,7 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 	}
 	l.file = file
 	l.size = info.Size()
+	l.createdAt = time.Now().Unix()
 	return nil
 }
 
@@ -302,6 +315,11 @@ func (l *Logger) filename() string {
 	}
 	name := filepath.Base(os.Args[0]) + "-lumberjack.log"
 	return filepath.Join(os.TempDir(), name)
+}
+
+// exceedsRollingInterval checks if the log file age exceeds the rolling interval
+func (l *Logger) exceedsRollingInterval() bool {
+	return l.RollingInterval > 0 && time.Now().Unix()-l.createdAt >= l.RollingInterval
 }
 
 // millRunOnce performs compression and removal of stale log files.
