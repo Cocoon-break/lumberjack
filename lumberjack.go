@@ -257,6 +257,7 @@ func (l *Logger) openNew() error {
 	}
 	l.file = f
 	l.size = 0
+	l.createdAt = time.Now().Unix()
 	return nil
 }
 
